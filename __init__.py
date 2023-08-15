@@ -11,6 +11,7 @@ import machine
 import math
 import json
 from st3m import logging
+from st3m.ui.interactions import CapScrollController
 import st3m.run
 
 
@@ -25,15 +26,45 @@ class UART_SEND(Application):
         self._led = 0.0
         self._phase = 0.0
         self.text= None
+        self.loop = False
+        leds.set_auto_update(1)
         self.Display_Text = '-'
-        jack = badgelink.right
-        jack.enable()
-        self.uart = machine.UART(1, baudrate=9600, tx=jack.tip.pin.num(), rx=jack.ring.pin.num())
-        jackleft = badgelink.left
-        jackleft.enable()
-        self.uart2 = machine.UART(1, baudrate=9600, tx=jackleft.ring.pin.num(), rx=jackleft.tip.pin.num())
-
+        self.scroll = CapScrollController()
+        # comment in for amster
+        try:
+            jack = badgelink.right
+            jack.enable()
+            self.uart = machine.UART(1, baudrate=9600, tx=jack.tip.pin.num(), rx=jack.ring.pin.num())
+        except:
+            jackleft = badgelink.left
+            jackleft.enable()
+            self.uart = machine.UART(1, baudrate=9600, tx=jackleft.ring.pin.num(), rx=jackleft.tip.pin.num())
        
+            # master end
+        #comment in for client (left plug)
+        # jackleft = badgelink.left
+        # jackleft.enable()
+        # self.uart2 = machine.UART(1, baudrate=9600, tx=jackleft.ring.pin.num(), rx=jackleft.tip.pin.num())
+        # end client 
+       
+    def config_loop(self):
+         if self.loop == True:
+            log.info('Loop activated')
+            jackleft = badgelink.left
+            jackleft.enable()
+            self.uart2 = machine.UART(2, baudrate=9600, tx=jackleft.ring.pin.num(), rx=jackleft.tip.pin.num())
+            self.uart2.flush()
+            log.info('uart2 active')
+         else:
+            try:
+                self.uart2.flush()
+                self.uart2.deinit()
+                log.info('uart2 disabled')
+            except:
+                log.info('could not deinit uart')
+            badgelink.left.disable()
+            self.uart.flush()
+            
 
 
     def draw(self, ctx: Context) -> None:
@@ -44,7 +75,11 @@ class UART_SEND(Application):
         ctx.rgb(*GO_GREEN)
         ctx.move_to(-60, -60)
         ctx.save()
-        readline = self.uart2.readline()
+        if self.loop == True  and self.uart2.txdone():
+            readline = self.uart2.readline()
+        elif self.uart.txdone():
+            readline = self.uart.readline()
+        
         if  readline != bytes([00]) and readline != None:
             self.Display_Text = readline.decode()
             log.info('receive: '+ readline.decode())
@@ -64,12 +99,6 @@ class UART_SEND(Application):
             
         ctx.text(self.Display_Text)
         ctx.restore()
-        
-
-        
-        leds.update()
-        # ctx.fill()
-
 
     def think(self, ins: InputController, delta_ms: int) -> None:
         super().think(ins, delta_ms)
@@ -80,7 +109,12 @@ class UART_SEND(Application):
         if self._led >= 40:
             self._led = 0
 
-        
+        if self.input.buttons.os.middle.pressed:
+            self.text = 'middle\r\n'
+            self.loop = not self.loop
+            log.info('toogle loop to:'+ str(self.loop))
+            self.config_loop()
+            log.info('send: middle')
 
         if self.input.buttons.app.left.pressed:
             self.text = 'left\r\n'
